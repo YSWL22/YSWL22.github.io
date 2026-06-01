@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>闹钟与倒计时</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#1a1a2e;--bg2:#16213e;--card:rgba(31,43,71,0.82);--border:rgba(45,58,92,0.7);
+    --purple:#6c5ce7;--purple-light:#a29bfe;--cyan:#00cec9;
+    --white:#f0f0f0;--gray:#c0c8e0;--red:#ff6b6b;--orange:#feca57;
+  }
+  html{font-size:18px}
+  body{
+    font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    color:var(--white);min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;
+    background-color:var(--bg);
+    background-image:none;
+    background-repeat:no-repeat;
+    background-position:center center;
+    background-attachment:fixed;
+    background-size:cover;
+    position:relative;
+  }
+  /* dark overlay for readability */
+  body::before{
+    content:'';position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(10,10,30,0.55);z-index:0;
+    pointer-events:none;
+    transition:background .3s;
+  }
+  body.no-overlay::before{background:transparent}
+  body>*{position:relative;z-index:1}
+
+  /* glassmorphism toggle */
+  .card,.alert-box,.settings-box{
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  }
+  body.no-glass .card,
+  body.no-glass .alert-box,
+  body.no-glass .settings-box{
+    backdrop-filter:none;-webkit-backdrop-filter:none;
+    background:rgba(31,43,71,0.95);
+  }
+
+  /* ── Header / Tabs ── */
+  .header{
+    width:100%;max-width:640px;padding:30px 24px 0;
+    display:flex;flex-direction:column;align-items:center;
+  }
+  .header h1{
+    font-size:1.5rem;font-weight:600;
+    background:linear-gradient(135deg,var(--purple-light),var(--cyan));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    margin-bottom:22px;letter-spacing:1px;
+  }
+  .tabs{
+    display:flex;width:100%;border-radius:14px;overflow:hidden;
+    background:var(--bg2);border:1px solid var(--border);
+  }
+  .tab{
+    flex:1;padding:15px 0;text-align:center;font-size:1.1rem;font-weight:500;
+    cursor:pointer;transition:all .3s;color:var(--gray);
+    position:relative;
+  }
+  .tab.active{
+    background:linear-gradient(135deg,var(--purple),#7c6cf0);
+    color:#fff;box-shadow:0 2px 12px rgba(108,92,231,.4);
+  }
+  .tab:hover:not(.active){color:var(--white)}
+
+  /* ── Main Panels ── */
+  .panel{display:none;width:100%;max-width:640px;padding:24px}
+  .panel.active{display:flex;flex-direction:column;align-items:center}
+
+  /* ── Clock ── */
+  .clock{
+    font-size:4.5rem;font-weight:700;letter-spacing:4px;
+    background:linear-gradient(135deg,var(--purple-light),var(--cyan));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    margin:32px 0 10px;font-variant-numeric:tabular-nums;
+  }
+  .clock-date{font-size:1rem;color:var(--gray);margin-bottom:28px}
+
+  /* ── Card ── */
+  .card{
+    width:100%;background:var(--card);border:1px solid var(--border);
+    border-radius:16px;padding:24px;margin-bottom:18px;
+    transition:background .3s,backdrop-filter .3s;
+  }
+  .card-title{font-size:1rem;color:var(--gray);margin-bottom:16px;text-transform:uppercase;letter-spacing:1px}
+
+  /* ── Add Alarm ── */
+  .add-alarm{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .time-input{display:flex;align-items:center;gap:6px}
+  .time-input input{
+    width:68px;padding:12px 8px;text-align:center;font-size:1.5rem;
+    font-weight:600;background:rgba(22,33,62,0.8);border:1px solid var(--border);
+    border-radius:10px;color:var(--white);outline:none;
+    transition:border-color .2s;
+  }
+  .time-input input:focus{border-color:var(--purple-light)}
+  .time-input span{font-size:1.8rem;font-weight:700;color:var(--purple-light)}
+  .label-input{
+    flex:1;min-width:120px;padding:12px 14px;font-size:1rem;
+    background:rgba(22,33,62,0.8);border:1px solid var(--border);
+    border-radius:10px;color:var(--white);outline:none;
+    transition:border-color .2s;
+  }
+  .label-input:focus{border-color:var(--purple-light)}
+  .label-input::placeholder{color:var(--gray)}
+  .btn-add{
+    padding:12px 24px;font-size:1rem;font-weight:600;
+    background:linear-gradient(135deg,var(--purple),#7c6cf0);
+    color:#fff;border:none;border-radius:10px;cursor:pointer;
+    transition:transform .15s,box-shadow .2s;
+    white-space:nowrap;
+  }
+  .btn-add:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(108,92,231,.5)}
+  .btn-add:active{transform:scale(.97)}
+
+  /* ── Alarm List ── */
+  .alarm-list{width:100%}
+  .alarm-item{
+    display:flex;align-items:center;gap:14px;
+    padding:16px 0;border-bottom:1px solid var(--border);
+  }
+  .alarm-item:last-child{border-bottom:none}
+  .alarm-time{font-size:1.8rem;font-weight:700;font-variant-numeric:tabular-nums;min-width:90px}
+  .alarm-label{flex:1;font-size:1rem;color:var(--gray)}
+  .alarm-toggle{
+    position:relative;width:52px;height:28px;
+    background:rgba(22,33,62,0.8);border-radius:14px;cursor:pointer;
+    border:1px solid var(--border);transition:all .3s;
+  }
+  .alarm-toggle.on{background:var(--purple);border-color:var(--purple)}
+  .alarm-toggle::after{
+    content:'';position:absolute;top:3px;left:3px;
+    width:20px;height:20px;border-radius:50%;background:#fff;
+    transition:transform .3s;
+  }
+  .alarm-toggle.on::after{transform:translateX(24px)}
+  .alarm-delete{
+    background:none;border:none;color:var(--gray);cursor:pointer;
+    font-size:1.3rem;padding:4px;transition:color .2s;
+  }
+  .alarm-delete:hover{color:var(--red)}
+  .empty-hint{text-align:center;color:var(--gray);font-size:1rem;padding:24px 0}
+
+  /* ── Countdown ── */
+  .countdown-display{
+    position:relative;width:300px;height:300px;margin:24px 0 28px;
+  }
+  .countdown-ring{width:100%;height:100%;transform:rotate(-90deg)}
+  .countdown-ring-bg{fill:none;stroke:rgba(22,33,62,0.6);stroke-width:10}
+  .countdown-ring-progress{
+    fill:none;stroke:url(#ringGrad);stroke-width:10;
+    stroke-linecap:round;transition:stroke-dashoffset .3s linear;
+  }
+  .countdown-time-center{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    text-align:center;
+  }
+  .countdown-time-center .time{
+    font-size:3.2rem;font-weight:700;font-variant-numeric:tabular-nums;
+    color:var(--cyan);
+  }
+  .countdown-time-center .label{font-size:.9rem;color:var(--gray);margin-top:6px}
+
+  /* preset buttons */
+  .presets{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px;justify-content:center}
+  .preset-btn{
+    padding:10px 20px;font-size:.9rem;font-weight:500;
+    background:rgba(22,33,62,0.8);border:1px solid var(--border);
+    border-radius:22px;color:var(--gray);cursor:pointer;
+    transition:all .2s;
+  }
+  .preset-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+  .preset-btn.active{background:var(--cyan);color:var(--bg);border-color:var(--cyan);font-weight:600}
+
+  /* timer inputs */
+  .timer-inputs{display:flex;align-items:center;gap:8px;margin-bottom:20px}
+  .timer-inputs input{
+    width:72px;padding:12px 6px;text-align:center;font-size:1.4rem;
+    font-weight:600;background:rgba(22,33,62,0.8);border:1px solid var(--border);
+    border-radius:10px;color:var(--white);outline:none;
+  }
+  .timer-inputs input:focus{border-color:var(--cyan)}
+  .timer-inputs span{font-size:1.4rem;font-weight:700;color:var(--cyan)}
+
+  /* controls */
+  .controls{display:flex;gap:16px;margin-bottom:20px}
+  .ctrl-btn{
+    width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;
+    font-size:1.5rem;display:flex;align-items:center;justify-content:center;
+    transition:all .2s;
+  }
+  .ctrl-btn.play{background:var(--cyan);color:var(--bg)}
+  .ctrl-btn.play:hover{box-shadow:0 0 20px rgba(0,206,201,.5);transform:scale(1.05)}
+  .ctrl-btn.pause{background:var(--orange);color:var(--bg)}
+  .ctrl-btn.pause:hover{box-shadow:0 0 20px rgba(254,202,87,.5);transform:scale(1.05)}
+  .ctrl-btn.reset{background:rgba(22,33,62,0.8);color:var(--gray);border:1px solid var(--border)}
+  .ctrl-btn.reset:hover{color:var(--red);border-color:var(--red);transform:scale(1.05)}
+
+  /* ── Alert Modal ── */
+  .alert-overlay{
+    display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,.75);z-index:1000;
+    justify-content:center;align-items:center;
+    animation:fadeIn .3s;
+  }
+  .alert-overlay.show{display:flex}
+  .alert-box{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:22px;padding:48px 56px;text-align:center;
+    animation:popIn .4s;max-width:420px;width:90%;
+    box-shadow:0 8px 40px rgba(0,0,0,.5);
+    transition:background .3s,backdrop-filter .3s;
+  }
+  .alert-icon{font-size:3.5rem;margin-bottom:20px}
+  .alert-title{font-size:1.8rem;font-weight:700;margin-bottom:10px}
+  .alert-sub{font-size:1.05rem;color:var(--gray);margin-bottom:28px}
+  .btn-dismiss{
+    padding:14px 42px;font-size:1.1rem;font-weight:600;
+    background:linear-gradient(135deg,var(--purple),var(--cyan));
+    color:#fff;border:none;border-radius:12px;cursor:pointer;
+    transition:transform .15s,box-shadow .2s;
+  }
+  .btn-dismiss:hover{transform:translateY(-1px);box-shadow:0 4px 18px rgba(108,92,231,.5)}
+  .btn-dismiss:active{transform:scale(.97)}
+
+  /* ── Bottom Bar ── */
+  .bottom-bar{
+    width:100%;max-width:640px;padding:12px 24px 20px;
+    display:flex;justify-content:center;
+  }
+  .btn-settings{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 24px;font-size:.9rem;font-weight:500;
+    background:rgba(22,33,62,0.6);border:1px solid var(--border);
+    border-radius:22px;color:var(--gray);cursor:pointer;
+    transition:all .2s;
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  }
+  .btn-settings:hover{border-color:var(--purple-light);color:var(--purple-light)}
+  .btn-settings .icon{font-size:1.1rem}
+
+  /* ── Settings Overlay ── */
+  .settings-overlay{
+    display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,.6);z-index:900;
+    justify-content:center;align-items:center;
+    animation:fadeIn .25s;
+  }
+  .settings-overlay.show{display:flex}
+  .settings-box{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:20px;padding:28px 32px;
+    max-width:480px;width:92%;
+    box-shadow:0 8px 40px rgba(0,0,0,.5);
+    animation:popIn .35s;
+    transition:background .3s,backdrop-filter .3s;
+  }
+  .settings-header{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:24px;
+  }
+  .settings-header h2{font-size:1.2rem;font-weight:600}
+  .btn-close-settings{
+    background:none;border:none;color:var(--gray);font-size:1.4rem;
+    cursor:pointer;padding:4px 8px;transition:color .2s;
+  }
+  .btn-close-settings:hover{color:var(--white)}
+
+  .settings-section{margin-bottom:22px}
+  .settings-section:last-child{margin-bottom:0}
+  .settings-label{
+    font-size:.85rem;color:var(--gray);margin-bottom:10px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .settings-label .emoji{font-size:1rem}
+
+  /* background file picker */
+  .bg-picker{display:flex;gap:10px;flex-wrap:wrap}
+  .btn-upload{
+    flex:1;min-width:140px;padding:12px 16px;font-size:.9rem;font-weight:500;
+    background:linear-gradient(135deg,var(--purple),#7c6cf0);
+    color:#fff;border:none;border-radius:10px;cursor:pointer;
+    transition:transform .15s,box-shadow .2s;
+    text-align:center;
+  }
+  .btn-upload:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(108,92,231,.5)}
+  .btn-upload:active{transform:scale(.97)}
+  .btn-reset-bg{
+    padding:12px 16px;font-size:.9rem;font-weight:500;
+    background:rgba(22,33,62,0.8);border:1px solid var(--border);
+    border-radius:10px;color:var(--gray);cursor:pointer;
+    transition:all .2s;white-space:nowrap;
+  }
+  .btn-reset-bg:hover{border-color:var(--red);color:var(--red)}
+
+  .bg-filename{
+    font-size:.8rem;color:var(--gray);margin-top:8px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    max-width:100%;
+  }
+
+  /* fit mode selector */
+  .fit-options{display:flex;gap:8px;flex-wrap:wrap}
+  .fit-btn{
+    padding:8px 16px;font-size:.8rem;font-weight:500;
+    background:rgba(22,33,62,0.8);border:1px solid var(--border);
+    border-radius:10px;color:var(--gray);cursor:pointer;
+    transition:all .2s;
+  }
+  .fit-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+  .fit-btn.active{background:var(--cyan);color:var(--bg);border-color:var(--cyan);font-weight:600}
+
+  /* settings toggle row */
+  .toggle-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 0;
+  }
+  .toggle-row .label{font-size:.9rem;color:var(--white)}
+  .toggle-row .desc{font-size:.75rem;color:var(--gray);margin-top:2px}
+  .switch{
+    position:relative;width:48px;height:26px;
+    background:rgba(22,33,62,0.8);border-radius:13px;cursor:pointer;
+    border:1px solid var(--border);transition:all .3s;
+    flex-shrink:0;
+  }
+  .switch.on{background:var(--cyan);border-color:var(--cyan)}
+  .switch::after{
+    content:'';position:absolute;top:2px;left:2px;
+    width:20px;height:20px;border-radius:50%;background:#fff;
+    transition:transform .3s;
+  }
+  .switch.on::after{transform:translateX(22px)}
+
+  /* overlay slider */
+  .slider-row{
+    display:flex;align-items:center;gap:12px;padding:8px 0;
+  }
+  .slider-row .label{font-size:.9rem;color:var(--white);min-width:60px}
+  .slider-row input[type=range]{
+    flex:1;height:6px;-webkit-appearance:none;appearance:none;
+    background:var(--bg2);border-radius:3px;outline:none;
+  }
+  .slider-row input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:var(--cyan);cursor:pointer;border:2px solid var(--bg);
+  }
+  .slider-row .value{font-size:.8rem;color:var(--gray);min-width:36px;text-align:right}
+
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes popIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+  .pulsing{animation:pulse 1s infinite}
+
+  /* ── Responsive ── */
+  @media(max-width:640px){
+    .clock{font-size:3.2rem}
+    .countdown-display{width:240px;height:240px}
+    .countdown-time-center .time{font-size:2.4rem}
+    .add-alarm{flex-direction:column;align-items:stretch}
+    .time-input{justify-content:center}
+    .btn-add{width:100%}
+    .settings-box{padding:22px 20px}
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>⏰ 闹钟与倒计时</h1>
+  <div class="tabs">
+    <div class="tab active" data-tab="alarm">闹钟</div>
+    <div class="tab" data-tab="timer">倒计时</div>
+  </div>
+</div>
+
+<!-- ──── Alarm Panel ──── -->
+<div class="panel active" id="panel-alarm">
+  <div class="clock" id="liveClock">00:00:00</div>
+  <div class="clock-date" id="liveDate"></div>
+
+  <div class="card">
+    <div class="card-title">添加闹钟</div>
+    <div class="add-alarm">
+      <div class="time-input">
+        <input type="number" id="alarmHour" min="0" max="23" placeholder="时" value="07">
+        <span>:</span>
+        <input type="number" id="alarmMin" min="0" max="59" placeholder="分" value="00">
+      </div>
+      <input type="text" class="label-input" id="alarmLabel" placeholder="标签（可选）" maxlength="20">
+      <button class="btn-add" id="btnAddAlarm">添加</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">闹钟列表</div>
+    <div class="alarm-list" id="alarmList">
+      <div class="empty-hint">暂无闹钟</div>
+    </div>
+  </div>
+</div>
+
+<!-- ──── Timer Panel ──── -->
+<div class="panel" id="panel-timer">
+  <div class="countdown-display">
+    <svg class="countdown-ring" viewBox="0 0 300 300">
+      <defs>
+        <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#6c5ce7"/>
+          <stop offset="100%" stop-color="#00cec9"/>
+        </linearGradient>
+      </defs>
+      <circle class="countdown-ring-bg" cx="150" cy="150" r="136"/>
+      <circle class="countdown-ring-progress" id="ringProgress" cx="150" cy="150" r="136"
+        stroke-dasharray="854.51" stroke-dashoffset="0"/>
+    </svg>
+    <div class="countdown-time-center">
+      <div class="time" id="timerDisplay">00:00:00</div>
+      <div class="label" id="timerLabel">设置倒计时</div>
+    </div>
+  </div>
+
+  <div class="timer-inputs" id="timerInputs">
+    <input type="number" id="timerHour" min="0" max="23" placeholder="时" value="00">
+    <span>:</span>
+    <input type="number" id="timerMin" min="0" max="59" placeholder="分" value="05">
+    <span>:</span>
+    <input type="number" id="timerSec" min="0" max="59" placeholder="秒" value="00">
+  </div>
+
+  <div class="presets" id="presets">
+    <button class="preset-btn" data-seconds="60">1 分钟</button>
+    <button class="preset-btn" data-seconds="300">5 分钟</button>
+    <button class="preset-btn" data-seconds="900">15 分钟</button>
+    <button class="preset-btn" data-seconds="1800">30 分钟</button>
+    <button class="preset-btn" data-seconds="3600">1 小时</button>
+  </div>
+
+  <div class="controls">
+    <button class="ctrl-btn reset" id="btnReset" title="重置">↺</button>
+    <button class="ctrl-btn play" id="btnPlayPause" title="开始">▶</button>
+  </div>
+</div>
+
+<!-- ──── Bottom Bar ──── -->
+<div class="bottom-bar">
+  <button class="btn-settings" id="btnOpenSettings">
+    <span class="icon">🎨</span>
+    <span>自定义背景</span>
+  </button>
+</div>
+
+<!-- ──── Settings Overlay ──── -->
+<div class="settings-overlay" id="settingsOverlay">
+  <div class="settings-box">
+    <div class="settings-header">
+      <h2>🎨 背景与效果设置</h2>
+      <button class="btn-close-settings" id="btnCloseSettings">✕</button>
+    </div>
+
+    <!-- Background image -->
+    <div class="settings-section">
+      <div class="settings-label"><span class="emoji">🖼️</span> 背景图片</div>
+      <div class="bg-picker">
+        <button class="btn-upload" id="btnUploadBg">选择图片</button>
+        <button class="btn-reset-bg" id="btnResetBg">恢复默认</button>
+      </div>
+      <input type="file" id="bgFileInput" accept="image/*" style="display:none">
+      <div class="bg-filename" id="bgFilename"></div>
+    </div>
+
+    <!-- Fit mode -->
+    <div class="settings-section">
+      <div class="settings-label"><span class="emoji">📐</span> 图片适配模式</div>
+      <div class="fit-options" id="fitOptions">
+        <button class="fit-btn active" data-fit="cover">覆盖裁剪</button>
+        <button class="fit-btn" data-fit="contain">完整显示</button>
+        <button class="fit-btn" data-fit="fill">拉伸填满</button>
+        <button class="fit-btn" data-fit="auto">原始大小</button>
+      </div>
+    </div>
+
+    <!-- Overlay -->
+    <div class="settings-section">
+      <div class="settings-label"><span class="emoji">🌫️</span> 遮罩与效果</div>
+      <div class="toggle-row">
+        <div>
+          <div class="label">暗色遮罩</div>
+          <div class="desc">在背景图上叠加暗色层，提升文字可读性</div>
+        </div>
+        <div class="switch on" id="switchOverlay" data-key="overlay"></div>
+      </div>
+      <div class="slider-row" id="overlaySliderRow">
+        <span class="label">遮罩浓度</span>
+        <input type="range" id="overlaySlider" min="0" max="100" value="55">
+        <span class="value" id="overlayValue">55%</span>
+      </div>
+    </div>
+
+    <!-- Glassmorphism -->
+    <div class="settings-section">
+      <div class="settings-label"><span class="emoji">✨</span> 毛玻璃效果</div>
+      <div class="toggle-row">
+        <div>
+          <div class="label">毛玻璃</div>
+          <div class="desc">为卡片添加模糊透明效果</div>
+        </div>
+        <div class="switch on" id="switchGlass" data-key="glass"></div>
+      </div>
+      <div class="slider-row" id="glassSliderRow">
+        <span class="label">模糊强度</span>
+        <input type="range" id="glassSlider" min="0" max="30" value="12">
+        <span class="value" id="glassValue">12px</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ──── Alert Modal ──── -->
+<div class="alert-overlay" id="alertOverlay">
+  <div class="alert-box">
+    <div class="alert-icon" id="alertIcon">🔔</div>
+    <div class="alert-title" id="alertTitle">时间到！</div>
+    <div class="alert-sub" id="alertSub"></div>
+    <button class="btn-dismiss" id="btnDismiss">关闭</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ──── Settings Manager ────
+  const SettingsManager = {
+    defaults: {
+      bgImage: '',
+      bgFit: 'cover',
+      overlay: true,
+      overlayOpacity: 55,
+      glass: true,
+      glassBlur: 12
+    },
+    data: null,
+
+    load() {
+      try {
+        const raw = localStorage.getItem('appSettings');
+        this.data = raw ? {...this.defaults, ...JSON.parse(raw)} : {...this.defaults};
+      } catch(e) {
+        this.data = {...this.defaults};
+      }
+    },
+
+    save() {
+      try { localStorage.setItem('appSettings', JSON.stringify(this.data)); } catch(e){}
+    },
+
+    get(key) { return this.data[key]; },
+
+    set(key, val) {
+      this.data[key] = val;
+      this.save();
+    }
+  };
+
+  // ──── Apply settings to DOM ────
+  function applySettings() {
+    const s = SettingsManager.data;
+
+    // Background image
+    if (s.bgImage) {
+      document.body.style.backgroundImage = 'url(' + s.bgImage + ')';
+    } else {
+      document.body.style.backgroundImage = 'none';
+    }
+
+    // Background fit
+    document.body.style.backgroundSize = s.bgFit === 'fill' ? '100% 100%' : s.bgFit;
+
+    // Overlay
+    if (s.overlay) {
+      document.body.classList.remove('no-overlay');
+      document.body.style.setProperty('--overlay-opacity', s.overlayOpacity / 100);
+      document.body.querySelector('::before') // can't directly style pseudo, use CSS var
+      // We'll use a CSS variable approach
+      document.documentElement.style.setProperty('--overlay-bg', 'rgba(10,10,30,' + (s.overlayOpacity / 100) + ')');
+    } else {
+      document.body.classList.add('no-overlay');
+    }
+
+    // Glassmorphism
+    if (s.glass) {
+      document.body.classList.remove('no-glass');
+      document.documentElement.style.setProperty('--glass-blur', s.glassBlur + 'px');
+    } else {
+      document.body.classList.add('no-glass');
+    }
+
+    // Update dynamic overlay style via CSS variable
+    // The body::before uses a CSS variable for background
+  }
+
+  // ──── AudioManager ────
+  const AudioManager = {
+    ctx: null, playing: false, _oscillators: [],
+    _ensureCtx() {
+      if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    },
+    play() {
+      if (this.playing) return;
+      this._ensureCtx(); this.playing = true; this._loop();
+    },
+    _loop() {
+      if (!this.playing) return;
+      const ctx = this.ctx, now = ctx.currentTime;
+      [880, 1100, 880, 1320].forEach((freq, i) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, now + i * 0.2);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.2 + 0.18);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(now + i * 0.2); osc.stop(now + i * 0.2 + 0.2);
+        this._oscillators.push(osc);
+      });
+      this._timer = setTimeout(() => this._loop(), 1200);
+    },
+    stop() {
+      this.playing = false; clearTimeout(this._timer);
+      this._oscillators.forEach(o => { try { o.stop(); } catch(e){} });
+      this._oscillators = [];
+    }
+  };
+
+  // ──── AlarmManager ────
+  const AlarmManager = {
+    alarms: [], nextId: 1,
+    add(hour, min, label) {
+      const alarm = { id: this.nextId++, hour: parseInt(hour), min: parseInt(min), label: label || '', enabled: true, triggered: false };
+      this.alarms.push(alarm); this.save(); return alarm;
+    },
+    remove(id) { this.alarms = this.alarms.filter(a => a.id !== id); this.save(); },
+    toggle(id) { const a = this.alarms.find(a => a.id === id); if (a) { a.enabled = !a.enabled; a.triggered = false; this.save(); } },
+    check() {
+      const now = new Date(), h = now.getHours(), m = now.getMinutes(), s = now.getSeconds(), fired = [];
+      this.alarms.forEach(a => {
+        if (a.enabled && !a.triggered && a.hour === h && a.min === m && s < 1) { a.triggered = true; fired.push(a); }
+        if (a.triggered && (a.hour !== h || a.min !== m)) { a.triggered = false; }
+      });
+      return fired;
+    },
+    save() { try { localStorage.setItem('alarms', JSON.stringify(this.alarms)); } catch(e){} },
+    load() {
+      try {
+        const data = localStorage.getItem('alarms');
+        if (data) { this.alarms = JSON.parse(data); this.nextId = this.alarms.reduce((mx, a) => Math.max(mx, a.id), 0) + 1; }
+      } catch(e){}
+    }
+  };
+
+  // ──── TimerManager ────
+  const TimerManager = {
+    totalSeconds: 0, remaining: 0, running: false, _endTime: 0, _pausedRemaining: 0,
+    setDuration(seconds) { this.totalSeconds = seconds; this.remaining = seconds; this.running = false; },
+    start() { if (this.remaining <= 0) return; this._endTime = Date.now() + this.remaining * 1000; this.running = true; },
+    pause() { if (!this.running) return; this.running = false; this._pausedRemaining = Math.max(0, (this._endTime - Date.now()) / 1000); this.remaining = this._pausedRemaining; },
+    resume() { if (this.remaining <= 0) return; this._endTime = Date.now() + this.remaining * 1000; this.running = true; },
+    reset() { this.remaining = this.totalSeconds; this.running = false; },
+    tick() {
+      if (!this.running) return this.remaining;
+      this.remaining = Math.max(0, (this._endTime - Date.now()) / 1000);
+      if (this.remaining <= 0) { this.running = false; this.remaining = 0; }
+      return this.remaining;
+    },
+    getProgress() { return this.totalSeconds <= 0 ? 0 : 1 - (this.remaining / this.totalSeconds); }
+  };
+
+  // ──── DOM refs ────
+  const $ = id => document.getElementById(id);
+  const liveClock = $('liveClock'), liveDate = $('liveDate'), alarmList = $('alarmList');
+  const alarmHour = $('alarmHour'), alarmMin = $('alarmMin'), alarmLabel = $('alarmLabel');
+  const btnAddAlarm = $('btnAddAlarm'), ringProgress = $('ringProgress');
+  const timerDisplay = $('timerDisplay'), timerLabel = $('timerLabel');
+  const timerHour = $('timerHour'), timerMin = $('timerMin'), timerSec = $('timerSec');
+  const timerInputs = $('timerInputs'), presetsDiv = $('presets');
+  const btnPlayPause = $('btnPlayPause'), btnReset = $('btnReset');
+  const alertOverlay = $('alertOverlay'), alertIcon = $('alertIcon');
+  const alertTitle = $('alertTitle'), alertSub = $('alertSub'), btnDismiss = $('btnDismiss');
+  // Settings DOM
+  const btnOpenSettings = $('btnOpenSettings'), settingsOverlay = $('settingsOverlay');
+  const btnCloseSettings = $('btnCloseSettings'), btnUploadBg = $('btnUploadBg');
+  const bgFileInput = $('bgFileInput'), btnResetBg = $('btnResetBg');
+  const bgFilename = $('bgFilename'), fitOptions = $('fitOptions');
+  const switchOverlay = $('switchOverlay'), overlaySlider = $('overlaySlider');
+  const overlayValue = $('overlayValue'), overlaySliderRow = $('overlaySliderRow');
+  const switchGlass = $('switchGlass'), glassSlider = $('glassSlider');
+  const glassValue = $('glassValue'), glassSliderRow = $('glassSliderRow');
+
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 136;
+
+  // ──── Dynamic overlay style injection ────
+  // We need to control body::before background dynamically, so inject a style element
+  const dynamicStyle = document.createElement('style');
+  document.head.appendChild(dynamicStyle);
+
+  function updateDynamicStyles() {
+    const s = SettingsManager.data;
+    let css = '';
+
+    // Overlay
+    if (s.overlay) {
+      css += 'body::before{background:rgba(10,10,30,' + (s.overlayOpacity / 100) + ') !important;}';
+    } else {
+      css += 'body::before{background:transparent !important;}';
+    }
+
+    // Glass blur
+    if (s.glass) {
+      css += '.card,.alert-box,.settings-box{backdrop-filter:blur(' + s.glassBlur + 'px) !important;-webkit-backdrop-filter:blur(' + s.glassBlur + 'px) !important;}';
+    } else {
+      css += '.card,.alert-box,.settings-box{backdrop-filter:none !important;-webkit-backdrop-filter:none !important;background:rgba(31,43,71,0.95) !important;}';
+    }
+
+    dynamicStyle.textContent = css;
+  }
+
+  // ──── Settings UI sync ────
+  function syncSettingsUI() {
+    const s = SettingsManager.data;
+
+    // Overlay switch
+    switchOverlay.classList.toggle('on', s.overlay);
+    overlaySliderRow.style.display = s.overlay ? 'flex' : 'none';
+    overlaySlider.value = s.overlayOpacity;
+    overlayValue.textContent = s.overlayOpacity + '%';
+
+    // Glass switch
+    switchGlass.classList.toggle('on', s.glass);
+    glassSliderRow.style.display = s.glass ? 'flex' : 'none';
+    glassSlider.value = s.glassBlur;
+    glassValue.textContent = s.glassBlur + 'px';
+
+    // Fit mode buttons
+    fitOptions.querySelectorAll('.fit-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.fit === s.bgFit);
+    });
+
+    // Filename
+    bgFilename.textContent = s.bgImage ? '已设置自定义背景' : '使用默认背景';
+  }
+
+  // ──── Settings event handlers ────
+
+  // Open / close settings
+  btnOpenSettings.addEventListener('click', () => {
+    syncSettingsUI();
+    settingsOverlay.classList.add('show');
+  });
+  btnCloseSettings.addEventListener('click', () => { settingsOverlay.classList.remove('show'); });
+  settingsOverlay.addEventListener('click', e => { if (e.target === settingsOverlay) settingsOverlay.classList.remove('show'); });
+
+  // Upload background image
+  btnUploadBg.addEventListener('click', () => bgFileInput.click());
+  bgFileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    bgFilename.textContent = '加载中...';
+
+    // Use FileReader to convert to base64
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      SettingsManager.set('bgImage', ev.target.result);
+      applySettings();
+      syncSettingsUI();
+      bgFilename.textContent = file.name;
+    };
+    reader.onerror = function() {
+      bgFilename.textContent = '加载失败';
+    };
+    reader.readAsDataURL(file);
+    // Reset input so same file can be re-selected
+    bgFileInput.value = '';
+  });
+
+  // Reset background
+  btnResetBg.addEventListener('click', () => {
+    SettingsManager.set('bgImage', '');
+    applySettings();
+    syncSettingsUI();
+  });
+
+  // Fit mode
+  fitOptions.addEventListener('click', e => {
+    const btn = e.target.closest('.fit-btn');
+    if (!btn) return;
+    SettingsManager.set('bgFit', btn.dataset.fit);
+    fitOptions.querySelectorAll('.fit-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applySettings();
+  });
+
+  // Overlay toggle
+  switchOverlay.addEventListener('click', () => {
+    const isOn = switchOverlay.classList.toggle('on');
+    SettingsManager.set('overlay', isOn);
+    overlaySliderRow.style.display = isOn ? 'flex' : 'none';
+    updateDynamicStyles();
+  });
+
+  // Overlay slider
+  overlaySlider.addEventListener('input', () => {
+    const val = parseInt(overlaySlider.value);
+    overlayValue.textContent = val + '%';
+    SettingsManager.set('overlayOpacity', val);
+    updateDynamicStyles();
+  });
+
+  // Glass toggle
+  switchGlass.addEventListener('click', () => {
+    const isOn = switchGlass.classList.toggle('on');
+    SettingsManager.set('glass', isOn);
+    glassSliderRow.style.display = isOn ? 'flex' : 'none';
+    updateDynamicStyles();
+  });
+
+  // Glass slider
+  glassSlider.addEventListener('input', () => {
+    const val = parseInt(glassSlider.value);
+    glassValue.textContent = val + 'px';
+    SettingsManager.set('glassBlur', val);
+    updateDynamicStyles();
+  });
+
+  // ──── Tab switching ────
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $('panel-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ──── Live clock ────
+  function updateClock() {
+    const now = new Date();
+    liveClock.textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+    const days = ['周日','周一','周二','周三','周四','周五','周六'];
+    liveDate.textContent = now.getFullYear() + '年' + (now.getMonth()+1) + '月' + now.getDate() + '日 ' + days[now.getDay()];
+  }
+
+  // ──── Render alarm list ────
+  function renderAlarms() {
+    if (AlarmManager.alarms.length === 0) {
+      alarmList.innerHTML = '<div class="empty-hint">暂无闹钟</div>';
+      return;
+    }
+    alarmList.innerHTML = AlarmManager.alarms.map(a => {
+      const timeStr = String(a.hour).padStart(2,'0') + ':' + String(a.min).padStart(2,'0');
+      return '<div class="alarm-item" data-id="' + a.id + '">' +
+        '<div class="alarm-time">' + timeStr + '</div>' +
+        '<div class="alarm-label">' + (a.label || '闹钟') + '</div>' +
+        '<div class="alarm-toggle ' + (a.enabled ? 'on' : '') + '" data-toggle="' + a.id + '"></div>' +
+        '<button class="alarm-delete" data-delete="' + a.id + '" title="删除">✕</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ──── Add alarm ────
+  btnAddAlarm.addEventListener('click', () => {
+    const h = parseInt(alarmHour.value), m = parseInt(alarmMin.value);
+    if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+      alarmHour.style.borderColor = 'var(--red)'; alarmMin.style.borderColor = 'var(--red)';
+      setTimeout(() => { alarmHour.style.borderColor = ''; alarmMin.style.borderColor = ''; }, 1500);
+      return;
+    }
+    AlarmManager.add(h, m, alarmLabel.value.trim());
+    alarmLabel.value = '';
+    renderAlarms();
+  });
+
+  // ──── Alarm list interactions ────
+  alarmList.addEventListener('click', e => {
+    const toggleEl = e.target.closest('[data-toggle]');
+    if (toggleEl) { AlarmManager.toggle(parseInt(toggleEl.dataset.toggle)); renderAlarms(); return; }
+    const delEl = e.target.closest('[data-delete]');
+    if (delEl) { AlarmManager.remove(parseInt(delEl.dataset.delete)); renderAlarms(); }
+  });
+
+  // ──── Presets ────
+  presetsDiv.addEventListener('click', e => {
+    const btn = e.target.closest('.preset-btn');
+    if (!btn) return;
+    const sec = parseInt(btn.dataset.seconds);
+    timerHour.value = String(Math.floor(sec / 3600)).padStart(2,'0');
+    timerMin.value = String(Math.floor((sec % 3600) / 60)).padStart(2,'0');
+    timerSec.value = String(sec % 60).padStart(2,'0');
+    TimerManager.setDuration(sec);
+    updateTimerUI();
+    presetsDiv.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+
+  // ──── Timer inputs change ────
+  [timerHour, timerMin, timerSec].forEach(inp => {
+    inp.addEventListener('change', () => {
+      presetsDiv.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      if (!TimerManager.running) { TimerManager.setDuration(getTimerInputSeconds()); updateTimerUI(); }
+    });
+  });
+
+  function getTimerInputSeconds() {
+    return Math.min((parseInt(timerHour.value)||0)*3600 + (parseInt(timerMin.value)||0)*60 + (parseInt(timerSec.value)||0), 24*3600);
+  }
+
+  // ──── Play / Pause ────
+  btnPlayPause.addEventListener('click', () => {
+    if (TimerManager.running) {
+      TimerManager.pause();
+      btnPlayPause.className = 'ctrl-btn play'; btnPlayPause.textContent = '▶'; btnPlayPause.title = '继续';
+      timerLabel.textContent = '已暂停';
+    } else {
+      if (TimerManager.remaining <= 0) {
+        const sec = getTimerInputSeconds(); if (sec <= 0) return; TimerManager.setDuration(sec);
+      }
+      TimerManager.resume();
+      btnPlayPause.className = 'ctrl-btn pause'; btnPlayPause.textContent = '❚❚'; btnPlayPause.title = '暂停';
+      timerInputs.style.opacity = '0.3'; timerInputs.style.pointerEvents = 'none';
+      presetsDiv.style.opacity = '0.3'; presetsDiv.style.pointerEvents = 'none';
+    }
+  });
+
+  // ──── Reset ────
+  btnReset.addEventListener('click', () => {
+    TimerManager.reset();
+    btnPlayPause.className = 'ctrl-btn play'; btnPlayPause.textContent = '▶'; btnPlayPause.title = '开始';
+    timerInputs.style.opacity = '1'; timerInputs.style.pointerEvents = 'auto';
+    presetsDiv.style.opacity = '1'; presetsDiv.style.pointerEvents = 'auto';
+    updateTimerUI();
+  });
+
+  // ──── Timer UI update ────
+  function updateTimerUI() {
+    const rem = TimerManager.remaining;
+    const display = rem <= 0 ? 0 : rem;
+    const dh = String(Math.floor(display / 3600)).padStart(2,'0');
+    const dm = String(Math.floor((display % 3600) / 60)).padStart(2,'0');
+    const ds = String(Math.ceil(display % 60) === 60 ? 0 : Math.ceil(display % 60)).padStart(2,'0');
+    timerDisplay.textContent = rem > 0 && rem < 1 ? '00:00:01' : (dh + ':' + dm + ':' + (rem <= 0 ? '00' : ds));
+    if (TimerManager.running) { timerLabel.textContent = '倒计时进行中'; }
+    else if (rem <= 0 && TimerManager.totalSeconds > 0) { timerLabel.textContent = '时间到！'; }
+    else if (rem < TimerManager.totalSeconds) { timerLabel.textContent = '已暂停'; }
+    else { timerLabel.textContent = '设置倒计时'; }
+    ringProgress.style.strokeDashoffset = RING_CIRCUMFERENCE * (1 - TimerManager.getProgress());
+  }
+
+  // ──── Alert ────
+  function showAlert(type, title, sub) {
+    alertIcon.textContent = type === 'alarm' ? '🔔' : '⏰';
+    alertTitle.textContent = title; alertSub.textContent = sub;
+    alertOverlay.classList.add('show'); AudioManager.play();
+  }
+  function dismissAlert() { alertOverlay.classList.remove('show'); AudioManager.stop(); }
+  btnDismiss.addEventListener('click', dismissAlert);
+
+  // ──── Main loop ────
+  let lastAlarmCheck = 0;
+  function loop() {
+    updateClock();
+    const now = Date.now();
+    if (now - lastAlarmCheck > 500) {
+      lastAlarmCheck = now;
+      const fired = AlarmManager.check();
+      if (fired.length > 0) {
+        const a = fired[0];
+        showAlert('alarm', '闹钟响了！', String(a.hour).padStart(2,'0') + ':' + String(a.min).padStart(2,'0') + (a.label ? ' — ' + a.label : ''));
+      }
+    }
+    const prevRemaining = TimerManager.remaining;
+    TimerManager.tick();
+    if (prevRemaining > 0 && TimerManager.remaining <= 0 && !TimerManager.running && TimerManager.totalSeconds > 0) {
+      const totalH = Math.floor(TimerManager.totalSeconds / 3600);
+      const totalM = Math.floor((TimerManager.totalSeconds % 3600) / 60);
+      const totalS = TimerManager.totalSeconds % 60;
+      let durationStr = '';
+      if (totalH > 0) durationStr += totalH + '小时';
+      if (totalM > 0) durationStr += totalM + '分钟';
+      if (totalS > 0) durationStr += totalS + '秒';
+      showAlert('timer', '倒计时结束！', durationStr + ' 倒计时已完成');
+      btnPlayPause.className = 'ctrl-btn play'; btnPlayPause.textContent = '▶'; btnPlayPause.title = '开始';
+      timerInputs.style.opacity = '1'; timerInputs.style.pointerEvents = 'auto';
+      presetsDiv.style.opacity = '1'; presetsDiv.style.pointerEvents = 'auto';
+    }
+    updateTimerUI();
+    requestAnimationFrame(loop);
+  }
+
+  // ──── Init ────
+  SettingsManager.load();
+  applySettings();
+  updateDynamicStyles();
+  AlarmManager.load();
+  renderAlarms();
+  updateClock();
+  TimerManager.setDuration(0);
+  updateTimerUI();
+  loop();
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (settingsOverlay.classList.contains('show')) { settingsOverlay.classList.remove('show'); }
+      else if (alertOverlay.classList.contains('show')) { dismissAlert(); }
+    }
+  });
+})();
+</script>
+</body>
+</html>
